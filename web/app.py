@@ -3,6 +3,7 @@ import threading
 import time
 import sys
 import logging
+import json # Import json module
 
 # Configure logging for Flask app
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -11,6 +12,8 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 # These will be set by main.py
 engine = None
 midi_handler = None
+mido = None # Will be set by main.py
+get_audio_output_devices = None # Will be set by main.py
 
 app = Flask(__name__)
 
@@ -26,11 +29,13 @@ def status():
     voices_status = []
     if engine and engine.voices:
         voices_status = [{'id': i, 'status': 'playing'} for i in range(len(engine.voices))] # Placeholder
+    latest_midi = midi_handler.latest_midi_message if midi_handler else None
 
     return jsonify({
         'bpm': current_bpm,
         'voices': voices_status,
-        'cpu_usage': current_cpu_usage
+        'cpu_usage': current_cpu_usage,
+        'latest_midi': latest_midi
     })
 
 @app.route('/tap')
@@ -38,10 +43,7 @@ def tap():
     logging.info("Web /tap endpoint hit.")
     if midi_handler:
         # Simulate a MIDI note_on event for tap tempo
-        # This assumes your midi_handler.midi_callback can handle a mock message
-        # For a real tap, you'd call a specific tap_tempo method on midi_handler
-        # For now, we'll just call the midi_callback with a dummy note_on message
-        midi_handler.midi_callback({'type': 'note_on', 'note': 48, 'velocity': 100, 'time': 0})
+        midi_handler.midi_callback({'type': 'note_on', 'note': 41, 'velocity': 100, 'time': 0})
         return jsonify({'message': 'Tap received', 'bpm': engine.global_clock.bpm})
     return jsonify({'error': 'MIDI handler not initialized'}), 500
 
@@ -58,8 +60,10 @@ def set_bpm():
 @app.route('/midi_ports')
 def midi_ports():
     try:
-        ports = mido.get_input_names()
-        return jsonify({'ports': ports})
+        if mido:
+            ports = mido.get_input_names()
+            return jsonify({'ports': ports})
+        return jsonify({'error': 'Mido not initialized'}), 500
     except Exception as e:
         logging.error(f"Error getting MIDI ports: {e}")
         return jsonify({'error': str(e)}), 500
@@ -75,6 +79,32 @@ def set_midi_port():
         return jsonify({'message': f'MIDI port set to {port_name}'})
     return jsonify({'error': 'Invalid port name or MIDI handler not initialized'}), 400
 
+@app.route('/audio_output_devices')
+def audio_output_devices():
+    try:
+        if get_audio_output_devices:
+            devices = get_audio_output_devices()
+            return jsonify({'devices': devices})
+        return jsonify({'error': 'Audio output device function not initialized'}), 500
+    except Exception as e:
+        logging.error(f"Error getting audio output devices: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/set_audio_output_device', methods=['POST'])
+def set_audio_output_device():
+    data = request.get_json()
+    device_id = data.get('device_id')
+    logging.info(f"Web /set_audio_output_device endpoint hit with device_id: {device_id}")
+    if device_id is not None:
+        try:
+            sd.default.device = int(device_id)
+            logging.info(f"Audio output device set to ID: {device_id}")
+            return jsonify({'message': f'Audio output device set to ID: {device_id}'})
+        except Exception as e:
+            logging.error(f"Error setting audio output device: {e}")
+            return jsonify({'error': str(e)}), 500
+    return jsonify({'error': 'Invalid device ID'}), 400
+
 # SSE endpoint for live BPM and CPU updates
 @app.route('/status_stream')
 def status_stream():
@@ -83,8 +113,13 @@ def status_stream():
             # Ensure engine is not None before accessing its attributes
             current_bpm = engine.global_clock.bpm if engine else 0
             current_cpu_usage = engine.cpu_usage if engine else 0.0
-            yield f"data: {{\"bpm\": {current_bpm}, \"cpu_usage\": {current_cpu_usage}}}\n\n"
-            time.sleep(1) # Send updates every second
+            latest_midi = midi_handler.latest_midi_message if midi_handler else None
+            
+            # Serialize latest_midi to JSON string
+            latest_midi_json = json.dumps(latest_midi)
+
+            yield f"data: {{\"bpm\": {current_bpm}, \"cpu_usage\": {current_cpu_usage}, \"latest_midi\": {latest_midi_json}}}\n\n"
+            time.sleep(0.1) # Send updates every 100ms for smoother MIDI display
     return app.response_class(generate(), mimetype='text/event-stream')
 
 # This part will not be executed when imported by main.py
@@ -104,14 +139,16 @@ if __name__ == '__main__':
     class DummyMidiHandler:
         def __init__(self):
             self.engine = None # Will be set later
+            self.latest_midi_message = None
         def midi_callback(self, message):
             logging.info(f"Dummy MIDI callback received: {message}")
-            if message.get('note') == 48:
+            self.latest_midi_message = message
+            if message.get('note') == 41:
                 # Simulate BPM change for dummy engine
                 self.engine.global_clock.bpm += 1
         def open_midi_port(self, port_name=None):
             logging.info(f"Dummy MIDI port opened: {port_name or 'default'}")
-        def close_midi_port():
+        def close_midi_port(self):
             logging.info("Dummy MIDI port closed.")
 
     engine = DummyEngine()

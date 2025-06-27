@@ -1,7 +1,7 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-    <title>Jahsper - Granular MIDI Looper</title>
+    <title>Granular Looper</title>
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
 </head>
 <body>
@@ -14,6 +14,12 @@
     <button id="set_midi_port_button">Set MIDI Port</button>
     <button id="tap_tempo_button">Tap Tempo</button>
 
+    <p>Incoming MIDI: <span id="midi_display">--</span></p>
+
+    <h2>Audio Output</h2>
+    <select id="audio_output_select"></select>
+    <button id="set_audio_output_button">Set Audio Output</button>
+
     <h2>BPM Control</h2>
     <input type="number" id="bpm_input" placeholder="Set BPM">
     <button id="set_bpm_button">Set BPM</button>
@@ -25,6 +31,24 @@
             var data = JSON.parse(event.data);
             $('#bpm_display').text(data.bpm.toFixed(2));
             $('#cpu_usage_display').text(data.cpu_usage.toFixed(2));
+
+            if (data.latest_midi) {
+                var midiType = data.latest_midi.type;
+                var midiChannel = data.latest_midi.channel !== null ? data.latest_midi.channel + 1 : '--'; // MIDI channels are 0-indexed
+                var midiNote = data.latest_midi.note !== null ? data.latest_midi.note : '--';
+                var midiVelocity = data.latest_midi.velocity !== null ? data.latest_midi.velocity : '--';
+                
+                if (midiType === 'note_on' || midiType === 'note_off') {
+                    $('#midi_display').text(`Note ${midiChannel} ${midiNote} ${midiVelocity}`);
+                } else if (midiType === 'control_change') {
+                    // Future implementation for control change messages
+                    $('#midi_display').text(`Ctl ${midiChannel} ${data.latest_midi.control} ${data.latest_midi.value}`);
+                } else {
+                    $('#midi_display').text(`MIDI: ${midiType}`);
+                }
+            } else {
+                $('#midi_display').text('--');
+            }
         };
 
         // Populate MIDI ports dropdown
@@ -54,6 +78,37 @@
             });
         }
         populateMidiPorts();
+
+        // Populate Audio Output devices dropdown
+        function populateAudioOutputDevices() {
+            $.get('/audio_output_devices', function(data) {
+                var select = $('#audio_output_select');
+                select.empty();
+                data.devices.forEach(function(device) {
+                    select.append($('<option>', {
+                        value: device.id,
+                        text: device.name
+                    }));
+                });
+            });
+        }
+        populateAudioOutputDevices();
+
+        // Set Audio Output button
+        $('#set_audio_output_button').click(function() {
+            var selectedDeviceId = $('#audio_output_select').val();
+            if (selectedDeviceId) {
+                $.ajax({
+                    url: '/set_audio_output_device',
+                    type: 'POST',
+                    contentType: 'application/json',
+                    data: JSON.stringify({ device_id: selectedDeviceId }),
+                    success: function(data) {
+                        console.log(data.message);
+                    }
+                });
+            }
+        });
 
         // Set MIDI Port button
         $('#set_midi_port_button').click(function() {

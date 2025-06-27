@@ -91,7 +91,7 @@ Stored as JSON or embedded in filename.
   - Trigger/mute (MIDI CC/note)
   - Pitch shift (encoder or automation)
   - Offset (delayed loop start by X beats)
-  - Each loop channel can be toggled by MIDI double-tap on assigned note/channel (configurable threshold).
+  - Each loop channel can be toggled by a velocity of above 80 assigned note/channel (configurable threshold). Softer velocities are counted as tap tempo. I will need to use a better keyboard as the current one only outputs a fixed 100 velocity.
 
 ---
 
