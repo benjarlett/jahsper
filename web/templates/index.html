@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Granular Looper</title>
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+</head>
+<body>
+    <h1>Granular Looper Control</h1>
+    <p>Current BPM: <span id="bpm_display">--</span></p>
+    <p>CPU Usage: <span id="cpu_usage_display">--</span>%</p>
+
+    <h2>MIDI Control</h2>
+    <select id="midi_port_select"></select>
+    <button id="set_midi_port_button">Set MIDI Port</button>
+    <button id="tap_tempo_button">Tap Tempo</button>
+
+    <h2>BPM Control</h2>
+    <input type="number" id="bpm_input" placeholder="Set BPM">
+    <button id="set_bpm_button">Set BPM</button>
+
+    <script>
+        // SSE for BPM and CPU updates
+        var es = new EventSource('/status_stream');
+        es.onmessage = function(event) {
+            var data = JSON.parse(event.data);
+            $('#bpm_display').text(data.bpm.toFixed(2));
+            $('#cpu_usage_display').text(data.cpu_usage.toFixed(2));
+        };
+
+        // Populate MIDI ports dropdown
+        function populateMidiPorts() {
+            $.get('/midi_ports', function(data) {
+                var select = $('#midi_port_select');
+                select.empty();
+                var defaultPort = "USB MIDI keyboard";
+                var foundDefault = false;
+
+                data.ports.forEach(function(port) {
+                    var option = $('<option>', {
+                        value: port,
+                        text: port
+                    });
+                    if (port === defaultPort) {
+                        option.attr('selected', 'selected');
+                        foundDefault = true;
+                    }
+                    select.append(option);
+                });
+
+                // If default not found, select the first one
+                if (!foundDefault && data.ports.length > 0) {
+                    select.val(data.ports[0]);
+                }
+            });
+        }
+        populateMidiPorts();
+
+        // Set MIDI Port button
+        $('#set_midi_port_button').click(function() {
+            var selectedPort = $('#midi_port_select').val();
+            if (selectedPort) {
+                $.ajax({
+                    url: '/set_midi_port',
+                    type: 'POST',
+                    contentType: 'application/json',
+                    data: JSON.stringify({ port_name: selectedPort }),
+                    success: function(data) {
+                        console.log(data.message);
+                    }
+                });
+            }
+        });
+
+        // Tap Tempo button
+        $('#tap_tempo_button').click(function() {
+            $.get('/tap', function(data) {
+                console.log(data.message);
+            });
+        });
+
+        // Set BPM button
+        $('#set_bpm_button').click(function() {
+            var newBPM = $('#bpm_input').val();
+            if (newBPM) {
+                $.ajax({
+                    url: '/set_bpm',
+                    type: 'POST',
+                    contentType: 'application/json',
+                    data: JSON.stringify({ bpm: newBPM }),
+                    success: function(data) {
+                        console.log(data.message);
+                    }
+                });
+            }
+        });
+    </script>
+</body>
+</html>

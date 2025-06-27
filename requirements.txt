@@ -1,0 +1,7 @@
+numpy
+sounddevice
+soundfile
+mido
+python-rtmidi
+Flask
+psutil
